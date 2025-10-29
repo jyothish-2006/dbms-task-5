@@ -1,0 +1,189 @@
+🧩 Employee Database Schema
+Employees
+Column	Type	Description
+EmpID	INT (PK)	Employee ID
+FirstName	VARCHAR	Employee’s first name
+LastName	VARCHAR	Employee’s last name
+ManagerID	INT (FK)	References EmpID (self-join for manager hierarchy)
+DepartmentID	INT	Foreign key to Departments
+Salary	DECIMAL	Employee’s salary
+Departments
+Column	Type	Description
+DepartmentID	INT (PK)	Department ID
+DepartmentName	VARCHAR	Name of the department
+✅ 1. Retrieve Each Employee’s Full Name and Their Manager’s Full Name
+
+This is a self-join query because employees and their managers are stored in the same table.
+
+Query
+SELECT 
+    E.EmpID,
+    CONCAT(E.FirstName, ' ', E.LastName) AS EmployeeName,
+    CONCAT(M.FirstName, ' ', M.LastName) AS ManagerName
+FROM Employees AS E
+LEFT JOIN Employees AS M
+    ON E.ManagerID = M.EmpID;
+
+
+✅ Explanation:
+
+E = employee
+
+M = manager
+
+A LEFT JOIN ensures all employees are included even if they have no manager (e.g., CEO).
+
+✅ 2. Find Employees Who Work in the ‘Sales’ Department
+
+We will write two equivalent queries — both yield the same result but differ in approach.
+
+(a) Using INNER JOIN
+SELECT 
+    E.EmpID,
+    CONCAT(E.FirstName, ' ', E.LastName) AS EmployeeName,
+    D.DepartmentName
+FROM Employees AS E
+INNER JOIN Departments AS D
+    ON E.DepartmentID = D.DepartmentID
+WHERE D.DepartmentName = 'Sales';
+
+(b) Using Subquery in WHERE Clause
+SELECT 
+    EmpID,
+    CONCAT(FirstName, ' ', LastName) AS EmployeeName
+FROM Employees
+WHERE DepartmentID IN (
+    SELECT DepartmentID
+    FROM Departments
+    WHERE DepartmentName = 'Sales'
+);
+
+
+✅ Equivalence Explanation:
+Both queries produce the same result set.
+
+Query (a) uses explicit join (faster in most optimizers).
+
+Query (b) uses subquery filtering (logically equivalent but sometimes less efficient).
+
+✅ 3. Recursive SQL Query to Find Management Chain
+
+This retrieves all managers up the hierarchy for a given employee.
+
+Recursive CTE Query
+WITH RECURSIVE ManagementChain AS (
+    -- Base case: start with the given employee
+    SELECT 
+        EmpID,
+        FirstName,
+        LastName,
+        ManagerID
+    FROM Employees
+    WHERE EmpID = 105   -- Example: given employee ID
+
+    UNION ALL
+
+    -- Recursive case: find the manager of the current employee
+    SELECT 
+        E.EmpID,
+        E.FirstName,
+        E.LastName,
+        E.ManagerID
+    FROM Employees E
+    INNER JOIN ManagementChain MC
+        ON E.EmpID = MC.ManagerID
+)
+SELECT * FROM ManagementChain;
+
+
+✅ Explanation:
+
+The base case selects the starting employee.
+
+The recursive part repeatedly finds that employee’s manager, their manager’s manager, etc.
+
+It terminates when a manager has no ManagerID.
+
+✅ 4. Optimized Recursive Query and Heuristics
+
+Recursive queries can be expensive due to multiple self-joins.
+Let’s rewrite and optimize the query for performance.
+
+Optimized Recursive Query
+WITH RECURSIVE ManagementChain AS (
+    SELECT 
+        EmpID,
+        FirstName,
+        LastName,
+        ManagerID,
+        1 AS Level
+    FROM Employees
+    WHERE EmpID = 105
+
+    UNION ALL
+
+    SELECT 
+        M.EmpID,
+        M.FirstName,
+        M.LastName,
+        M.ManagerID,
+        MC.Level + 1 AS Level
+    FROM Employees M
+    INNER JOIN ManagementChain MC
+        ON M.EmpID = MC.ManagerID
+)
+SELECT EmpID, CONCAT(FirstName, ' ', LastName) AS ManagerName, Level
+FROM ManagementChain
+ORDER BY Level;
+
+🔧 Optimization Heuristics Used
+Heuristic	Description
+H1: Selection Pushdown	Filter early (WHERE EmpID = 105) before recursion begins. Reduces initial data.
+H2: Projection Pushdown	Select only necessary columns (EmpID, ManagerID, names).
+H3: Avoid Redundant Joins	Join only once per recursion level.
+H4: Limit Recursion Depth	Add a stopping condition if organization hierarchy depth is known.
+H5: Indexing	Create an index on ManagerID to speed up recursive lookup.
+✅ 5. Query Equivalence Testing and Optimization Heuristics
+(a) Testing Query Equivalence
+
+Two SQL queries Q1 and Q2 are equivalent if:
+
+They produce the same result set for all possible valid database states.
+
+Steps to Test:
+
+Run both queries on the same data.
+
+Compare outputs — number of rows and content.
+
+Verify schema (column names and data types).
+
+Use EXCEPT / MINUS operator:
+
+(Q1)
+EXCEPT
+(Q2);
+
+
+If this returns no rows, the queries are equivalent.
+
+(b) Heuristics for Optimizing Complex Queries
+Heuristic	Description / Example
+1. Selection Pushdown	Apply WHERE conditions as early as possible in the query tree.
+Example: Filter employees by department before joining.
+2. Projection Pushdown	Retrieve only required columns.
+3. Join Ordering	Join smaller tables first or those with selective conditions.
+4. Combine Selections	Merge multiple filters into one where possible.
+5. Avoid Redundant Subqueries	Replace nested subqueries with joins if faster.
+6. Use Indexes	On join keys (DepartmentID, ManagerID).
+7. Materialize Intermediate Results	Cache recursive or repeated results to avoid recomputation.
+8. Use Recursive Depth Limits	Control recursion to prevent performance issues in hierarchies.
+9. Decompose Complex Joins	Break large joins into smaller manageable ones.
+10. Query Rewriting / Equivalence Rules	Example: σ(condition)(R ⨝ S) ≡ R ⨝ σ(condition)(S) when condition involves only S.
+🧠 Summary
+Task	Concept	Key SQL Feature
+1	Employee–Manager relationship	Self-Join
+2	Department filtering	JOIN vs Subquery Equivalence
+3	Management chain hierarchy	Recursive CTE
+4	Query optimization	Heuristics & Indexing
+5	Equivalence testing	EXCEPT operator & Result comparison
